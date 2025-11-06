@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Vyoma — Drone Design System (Working Holograms)</title>
+
+  <!-- Fonts and libs -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.152.2/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/gsap@3.12.2/dist/gsap.min.js"></script>
+  <script src="https://unpkg.com/simplex-noise@3.0.0/simplex-noise.min.js"></script>
+
+  <style>
+    :root{
+      --bg-1:#03040a; --accent:#06e0ff; --accent2:#7b5cff;
+    }
+    html,body{height:100%;margin:0;font-family:Rajdhani,Orbitron,system-ui;background:linear-gradient(180deg,#02020a,#061020);color:#dff7ff;}
+    /* allow vertical scroll (fixed earlier) */
+    body { overflow-y: auto; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+
+    header{
+      position:fixed;left:0;right:0;top:0;height:78px;display:flex;align-items:center;padding:12px 20px;z-index:80;
+      background:rgba(255,255,255,0.02);backdrop-filter:blur(6px);border-bottom:1px solid rgba(255,255,255,0.02);
+    }
+    .brand{display:flex;gap:12px;cursor:pointer}
+    .logo{width:52px;height:52px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(6,224,255,0.06),rgba(123,92,255,0.04));border:1px solid rgba(6,224,255,0.06)}
+    .title{font-weight:700;font-family:Orbitron;font-size:18px}
+    nav{margin-left:auto;display:flex;gap:10px}
+    .nav-btn{padding:8px 12px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.02);cursor:pointer}
+
+    /* Holographic background canvas */
+    #holo-bg{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0.5}
+
+    /* App container — not fixed so page can scroll */
+    #app{ position:relative; max-width:1300px; margin:100px auto 80px; padding:12px; display:grid; grid-template-columns: 1fr 420px; gap:18px; z-index:10; }
+    @media (max-width:1100px){ #app{ grid-template-columns:1fr; margin:92px 12px 120px; } }
+
+    .panel{ background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01)); border-radius:12px; padding:12px; border:1px solid rgba(255,255,255,0.02); box-shadow:0 10px 40px rgba(0,0,0,0.6); }
+    .content{ display:flex; flex-direction:column; gap:12px; }
+
+    .app-title{ margin:0; font-family:Orbitron; font-size:22px; }
+    .lead{ color:rgba(255,255,255,0.6); font-size:13px; margin-top:6px; }
+
+    .thumb-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-top:12px; }
+    .thumb-card{ height:180px; border-radius:12px; padding:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition: transform .22s; background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.02)); }
+    .thumb-card:hover{ transform:translateY(-6px); box-shadow:0 26px 60px rgba(6,224,255,0.05); border:1px solid rgba(6,224,255,0.04); }
+    .thumb-title{ font-weight:700; margin-top:8px; font-size:13px; color:#e9fbff; text-transform:capitalize; }
+    .thumb-canvas{ width:100%; height:120px; border-radius:8px; overflow:hidden; display:block; }
+
+    aside.console{ display:flex; flex-direction:column; gap:12px; height:100%; min-height:420px; }
+    .panel-block{ background:rgba(255,255,255,0.02); padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.02); }
+    #detail-scene{ height:340px; border-radius:8px; overflow:hidden; background:linear-gradient(180deg, rgba(6,224,255,0.02), rgba(123,92,255,0.01)); }
+
+    label{ font-size:13px; color:rgba(255,255,255,0.8); }
+    input[type=color]{ width:44px; height:34px; border-radius:8px; border:none; }
+    .btn{ padding:8px 10px; border-radius:8px; border:none; background:linear-gradient(90deg,rgba(6,224,255,0.08),rgba(123,92,255,0.05)); cursor:pointer; color:#e5fbff; font-weight:700; }
+
+    footer{ position:fixed; left:0; right:0; bottom:0; height:56px; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.5); z-index:80; background:rgba(0,0,0,0.15); border-top:1px solid rgba(255,255,255,0.02); }
+
+    /* small improvements for scrolling performance */
+    canvas { display:block; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand" onclick="jumpHome()">
+      <div class="logo" aria-hidden="true">
+        <svg width="36" height="36" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="rgba(6,224,255,0.06)"></rect><path d="M7 13 L12 6 L17 13" stroke="url(#g1)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#06e0ff"/><stop offset="1" stop-color="#7b5cff"/></linearGradient></defs></svg>
+      </div>
+      <div>
+        <div class="title">Vyoma — Drone Design System</div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.55)">Holographic demo</div>
+      </div>
+    </div>
+
+    <nav>
+      <button class="nav-btn" onclick="showSection('hub')">Hub</button>
+      <button class="nav-btn" onclick="showSection('gallery')">Gallery</button>
+      <button class="nav-btn" onclick="showSection('about')">About</button>
+    </nav>
+  </header>
+
+  <!-- decorative holo background -->
+  <canvas id="holo-bg"></canvas>
+
+  <!-- APP -->
+  <div id="app">
+    <!-- LEFT: hub + gallery + about -->
+    <div class="panel content">
+      <div>
+        <h1 class="app-title">Vyoma — Enhanced Holograms</h1>
+        <div class="lead">Interactive 3D holograms — click a thumbnail to open the detail hologram on the right.</div>
+      </div>
+
+      <div id="hubSection">
+        <div class="thumb-grid" id="thumbGrid"></div>
+      </div>
+
+      <div id="gallerySection" style="display:none;">
+        <h3 style="margin:8px 0;">Gallery</h3>
+        <div id="galleryGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px"></div>
+      </div>
+
+      <div id="aboutSection" style="display:none;">
+        <h3 style="margin:8px 0;">About / AI Terminal</h3>
+        <div style="background:rgba(0,0,0,0.35);padding:12px;border-radius:8px;border:1px solid rgba(6,224,255,0.04);font-family:monospace;color:#bfefff">
+          &gt; Vyoma core active.<br/>
+          &gt; Hologram styles: Neon, Wireframe, Crystal.<br/>
+          &gt; This demo uses procedural models — swap GLTF for final assets.
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: console & detail scene -->
+    <aside class="panel console">
+      <div>
+        <div style="font-weight:800" id="detailTitle">Select a Drone</div>
+        <div style="color:rgba(255,255,255,0.6);font-size:13px" id="detailSub">Click a holographic thumbnail</div>
+      </div>
+
+      <div class="panel-block">
+        <div id="detail-scene"></div>
+      </div>
+
+      <div class="panel-block" style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <label>Hologram Style</label>
+          <select id="holoStyle">
+            <option value="neon">Neon</option>
+            <option value="wire">Wireframe</option>
+            <option value="crystal">Crystal</option>
+          </select>
+          <label style="margin-left:8px">Color</label>
+          <input id="colorPicker" type="color" value="#06e0ff">
+          <button class="btn" onclick="applyColor()">Apply</button>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <label>Scale</label>
+          <input id="sizeSlider" type="range" min="0.5" max="2.2" step="0.05" value="1" style="flex:1">
+        </div>
+
+        <div style="display:flex;gap:8px;">
+          <button class="btn" onclick="toggleAnimate()">Animate</button>
+          <button class="btn" onclick="toggleSimulator()">Simulator</button>
+          <button class="btn" onclick="cycleStyle()">Cycle Styles</button>
+        </div>
+      </div>
+
+      <div class="panel-block">
+        <div style="font-weight:700;margin-bottom:8px">Data Console</div>
+        <div id="specs" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;color:rgba(255,255,255,0.85)"></div>
+      </div>
+
+      <div style="margin-top:auto;font-size:12px;color:rgba(255,255,255,0.5);text-align:center">
+        &copy; 2025 Vyoma — Holographic Demo
+      </div>
+    </aside>
+  </div>
+
+  <footer>Vyoma — Holographic Drone Design System</footer>
+
+  <script>
+  /* ----------------------------------------------------------
+     Working Vyoma: real Three.js holograms + responsive scroll
+     - Thumbnails: individual small WebGL scenes
+     - Detail: large WebGL scene updated on click
+     - Holo background: decorative points
+     ---------------------------------------------------------- */
+
+  // Drone data
+  const DRONES = {
+    quadcopter: { title:'Quadcopter', desc:'Versatile multi-rotor for photography and agility.', specs:{Power:'Battery',Range:'6 km','Flight Time':'28 min',Speed:'40 km/h',Payload:'1.5 kg',AI:'Autopilot v2'}},
+    fixedwing: { title:'Fixed-Wing', desc:'Efficient for long-range flights and mapping.', specs:{Power:'Hybrid',Range:'120 km','Flight Time':'180 min',Speed:'120 km/h',Payload:'5 kg',AI:'NavMesh v1'}},
+    hexacopter: { title:'Hexacopter', desc:'Six rotors for heavy lifting.', specs:{Power:'Battery',Range:'12 km','Flight Time':'40 min',Speed:'45 km/h',Payload:'5 kg',AI:'Stability AI'}},
+    octocopter: { title:'Octocopter', desc:'Maximum payload and redundancy.', specs:{Power:'Hybrid',Range:'20 km','Flight Time':'75 min',Speed:'60 km/h',Payload:'10 kg',AI:'Redundant AI'}},
+    delivery: { title:'Delivery', desc:'Cargo bays for logistics.', specs:{Power:'Hybrid',Range:'18 km','Flight Time':'60 min',Speed:'55 km/h',Payload:'20 kg',AI:'RouteOpt'}},
+    agricultural: { title:'Agricultural', desc:'Sprayers & crop monitoring.', specs:{Power:'Solar-assisted',Range:'8 km','Flight Time':'90 min',Speed:'30 km/h',Payload:'15 kg',AI:'CropSense'}},
+    swarm: { title:'Swarm', desc:'Coordinated group operations.', specs:{Power:'Battery',Range:'5 km','Flight Time':'15 min',Speed:'35 km/h',Payload:'0.2 kg',AI:'SwarmNet'}},
+    nano: { title:'Nano/Micro', desc:'Compact indoor operations.', specs:{Power:'Battery',Range:'500 m','Flight Time':'6 min',Speed:'12 km/h',Payload:'50 g',AI:'MicroNav'}},
+    military: { title:'Military', desc:'Armored with advanced sensors.', specs:{Power:'Hybrid',Range:'80 km','Flight Time':'120 min',Speed:'100 km/h',Payload:'8 kg',AI:'Tactical AI'}},
+    hybrid: { title:'Hybrid', desc:'VTOL + fixed-wing capabilities.', specs:{Power:'Hybrid',Range:'150 km','Flight Time':'240 min',Speed:'140 km/h',Payload:'7 kg',AI:'VTOL Manager'}},
+    spherical: { title:'Spherical', desc:'Omnidirectional orb.', specs:{Power:'Battery',Range:'4 km','Flight Time':'20 min',Speed:'25 km/h',Payload:'0.5 kg',AI:'OmniDrive'}},
+    singlerotor: { title:'Single-Rotor', desc:'Helicopter-style precise control.', specs:{Power:'Fuel/Battery',Range:'40 km','Flight Time':'90 min',Speed:'70 km/h',Payload:'3 kg',AI:'RotorAssist'}},
+  };
+  const KEYS = Object.keys(DRONES);
+
+  // Global state
+  let selected = null;
+  let detailScene = null;
+  let thumbInstances = [];
+  let holoBg = null;
+
+  /* ------------------------------
+     Hologram Shader snippet (used for crystal)
+     ------------------------------ */
+  const HoloShader = {
+    uniforms: {
+      uColor: { value: new THREE.Color(0x06e0ff) },
+      uTime: { value: 0 },
+      uOpacity: { value: 1 },
+    },
+    vertexShader: `
+      varying vec3 vPos;
+      varying vec3 vNormal;
+      void main(){
+        vPos = position;
+        vNormal = normal;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uTime;
+      uniform float uOpacity;
+      varying vec3 vNormal;
+      varying vec3 vPos;
+      void main(){
+        float fresnel = pow(1.0 - dot(normalize(vNormal), vec3(0.0,0.0,1.0)), 2.0);
+        float scan = sin((vPos.y + uTime*0.6) * 30.0) * 0.5 + 0.5;
+        float line = smoothstep(0.45,0.55,scan);
+        vec3 col = uColor * (0.2 + fresnel*1.2) + uColor * (line*0.5);
+        gl_FragColor = vec4(col, uOpacity * (0.6 + fresnel*0.4));
+      }
+    `
+  };
+
+  function makeHoloMaterial(style, hex){
+    if(style === 'wire'){
+      const mat = new THREE.MeshStandardMaterial({ color:hex, metalness:0.1, roughness:0.6, transparent:true, opacity:0.9 });
+      return { meshMat: mat, line: true };
+    }
+    if(style === 'crystal'){
+      const mat = new THREE.ShaderMaterial({
+        uniforms: THREE.UniformsUtils.clone(HoloShader.uniforms),
+        vertexShader: HoloShader.vertexShader,
+        fragmentShader: HoloShader.fragmentShader,
+        transparent: true,
+        depthWrite: false,
+      });
+      mat.uniforms.uColor.value = new THREE.Color(hex);
+      mat.uniforms.uOpacity.value = 0.9;
+      return { meshMat: mat, line: false };
+    }
+    const mat = new THREE.MeshStandardMaterial({ color:hex, emissive:hex, emissiveIntensity:0.9, metalness:0.2, roughness:0.15, transparent:true, opacity:0.95 });
+    return { meshMat: mat, line: false };
+  }
+
+  // Procedural drone model factory (kept compact)
+  function createDroneModel(type, style='neon', colorHex=0x06e0ff){
+    const color = new THREE.Color(colorHex);
+    const { meshMat, line } = makeHoloMaterial(style, color);
+    const group = new THREE.Group();
+
+    function rotor(radius=0.18){
+      const rg = new THREE.Group();
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.02,12), new THREE.MeshStandardMaterial({color:0x0b0b0b,metalness:0.6,roughness:0.3}));
+      hub.rotation.x = Math.PI/2; rg.add(hub);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(radius*2,0.02,0.05), meshMat); blade.position.x = radius;
+      const blade2 = blade.clone(); blade2.rotation.y = Math.PI; rg.add(blade, blade2);
+      const glow = new THREE.Mesh(new THREE.CircleGeometry(radius*0.6, 24), new THREE.MeshBasicMaterial({color: color, transparent:true, opacity:0.12}));
+      glow.rotation.x = -Math.PI/2; glow.position.y = -0.02; rg.add(glow);
+      if(line){
+        const wf = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(radius*1.2,0.02,radius*1.2)), new THREE.LineBasicMaterial({color:color,transparent:true,opacity:0.6}));
+        wf.position.x = radius; rg.add(wf);
+      }
+      return rg;
+    }
+
+    // simplified shapes per type
+    switch(type){
+      case 'quadcopter': {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.12,0.4), new THREE.MeshStandardMaterial({color:0x0b1320,metalness:0.5,roughness:0.3}));
+        group.add(body);
+        const arm = 0.72;
+        for(let i=0;i<4;i++){
+          const a = i*Math.PI/2;
+          const ar = new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,arm,8), new THREE.MeshStandardMaterial({color:0x0b1320,metalness:0.5,roughness:0.3}));
+          ar.position.set(Math.cos(a)*arm/2,0,Math.sin(a)*arm/2); ar.rotation.z = Math.PI/2; ar.rotation.y = -a; group.add(ar);
+          const r = rotor(0.26); r.position.set(Math.cos(a)*arm,0,Math.sin(a)*arm); group.add(r);
+        }
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.28,0.02,0.06), meshMat); fin.position.y=0.08; fin.position.z=-0.12; group.add(fin);
+        break;
+      }
+      case 'fixedwing': {
+        const fus = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,1.2,12), new THREE.MeshStandardMaterial({color:0x0b1320,metalness:0.55,roughness:0.28}));
+        fus.rotation.z = Math.PI/2; group.add(fus);
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(2.0,0.02,0.5), meshMat); wing.position.y=-0.04; group.add(wing);
+        break;
+      }
+      case 'hexacopter': {
+        const body = new THREE.Mesh(new THREE.SphereGeometry(0.28,18,12), new THREE.MeshStandardMaterial({color:0x0b1320,metalness:0.45,roughness:0.33}));
+        group.add(body);
+        const pos = [[0.55,0],[-0.55,0],[0.3,0.48],[-0.3,0.48],[0.3,-0.48],[-0.3,-0.48]];
+        pos.forEach(p=>{ const r = rotor(0.22); r.position.set(p[0],0,p[1]); group.add(r);});
+        break;
+      }
+      case 'octocopter': {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.12,0.5), new THREE.MeshStandardMaterial({color:0x0b1320,metalness:0.55,roughness:0.28}));
+        group.add(body);
+        const pos = [[0.9,0],[-0.9,0],[0,0.9],[0,-0.9],[0.6,0.6],[-0.6,0.6],[0.6,-0.6],[-0.6,-0.6]];
+        pos.forEach(p=>{ const r = rotor(0.2); r.position.set(p[0],0,p[1]); group.add(r);});
+        break;
+      }
+      case 'spherical': {
+        const orb = new THREE.Mesh(new THREE.SphereGeometry(0.35,24,20), meshMat); group.add(orb);
+        const ring = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.SphereGeometry(0.38,12,10)), new THREE.LineBasicMaterial({color:color,transparent:true,opacity:0.25}));
+        group.add(ring);
+        break;
+      }
+      case 'delivery': {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.9,0.18,0.6), new THREE.MeshStandardMaterial({color:0x0b1320,metalness:0.5,roughness:0.3}));
+        group.add(body);
+        const cargo = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.24,0.36), meshMat); cargo.position.y=-0.22; group.add(cargo);
+        [[-0.5,0.45],[0.5,0.45],[-0.5,-0.45],[0.5,-0.45]].forEach(p=>{ const r=rotor(0.18); r.position.set(p[0],0,p[1]); group.add(r);});
+        break;
+      }
+      case 'agricultural': {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.12,0.5), new THREE.MeshStandardMaterial({color:0x0b1320,metalness:0.45,roughness:0.3}));
+        group.add(body);
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.6,12), meshMat); tank.rotation.x = Math.PI/2; tank.position.y=-0.14; group.add(tank);
+        break;
+      }
+      case 'swarm': {
+        for(let i=0;i<6;i++){ const s=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.04,0.08), meshMat); s.position.set((Math.random()-0.5)*0.8,(Math.random()-0.5)*0.08,(Math.random()-0.5)*0.8); group.add(s); }
+        break;
+      }
+      case 'nano': {
+        const core = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.05,0.12), meshMat); group.add(core); break;
+      }
+      case 'military': {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(1,0.18,0.5), new THREE.MeshStandardMaterial({color:0x1c1c1c,metalness:0.8,roughness:0.2})); group.add(body);
+        const turret = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.18,10), meshMat); turret.position.y=0.08; turret.rotation.x=Math.PI/2; group.add(turret);
+        break;
+      }
+      case 'hybrid': {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.12,0.4), new THREE.MeshStandardMaterial({color:0x0b1320,metalness:0.5,roughness:0.3})); group.add(body);
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(1.2,0.02,0.3), meshMat); wing.position.y=-0.02; group.add(wing);
+        [[-0.4,0.45],[0.4,0.45],[-0.4,-0.45],[0.4,-0.45]].forEach(p=>{ const r=rotor(0.16); r.position.set(p[0],0,p[1]); group.add(r);});
+        break;
+      }
+      case 'singlerotor': {
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,0.8,10), new THREE.MeshStandardMaterial({color:0x0b1320,metalness:0.5,roughness:0.3})); body.rotation.z=Math.PI/2; group.add(body);
+        const r = rotor(0.45); group.add(r); break;
+      }
+      default: {
+        group.add(new THREE.Mesh(new THREE.BoxGeometry(0.4,0.12,0.26), meshMat)); break;
+      }
+    }
+
+    if(style !== 'wire'){
+      const sparkGeo = new THREE.SphereGeometry(0.01,6,6);
+      for(let i=0;i<3;i++){ const s = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:0.9})); s.position.set((Math.random()-0.5)*0.3,(Math.random()-0.5)*0.08,(Math.random()-0.5)*0.3); group.add(s); }
+    }
+
+    // cache bbox for camera framing
+    const box = new THREE.Box3().setFromObject(group);
+    const size = new THREE.Vector3(); box.getSize(size); group.userData.bbox = size;
+    return group;
+  }
+
+  /* --------------------------
+     Thumbnail: small three.js scene per card
+     - Accepts optional style override so we can show many holograms
+     -------------------------- */
+  class Thumbnail {
+    constructor(container, key, style=null){
+      this.container = container;
+      this.key = key;
+      this.canvas = document.createElement('canvas'); this.canvas.className = 'thumb-canvas';
+      this.container.appendChild(this.canvas);
+      this.renderer = new THREE.WebGLRenderer({canvas:this.canvas, alpha:true, antialias:true});
+      this.renderer.setPixelRatio(Math.min(2,window.devicePixelRatio));
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.PerspectiveCamera(40,1,0.1,50);
+      this.camera.position.set(1.0,0.6,1.4);
+      this.light = new THREE.HemisphereLight(0xffffff,0x061537,0.9); this.scene.add(this.light);
+      this.dir = new THREE.DirectionalLight(0xffffff,0.3); this.dir.position.set(3,6,2); this.scene.add(this.dir);
+
+      this.styles = ['neon','wire','crystal'];
+      this.styleIndex = 0;
+      if(style) this.style = style; else this.style = this.styles[this.styleIndex];
+      this.color = 0x06e0ff;
+      this.model = createDroneModel(key, this.style, this.color);
+      this.scene.add(this.model);
+
+      const grid = new THREE.GridHelper(2.0,6,0x06e0ff,0x06e0ff);
+      grid.material.opacity = 0.06; grid.material.transparent = true; grid.position.y = -0.5; this.scene.add(grid);
+
+      this.resize();
+      window.addEventListener('resize', ()=>this.resize());
+      this.last = performance.now();
+      this.running = true;
+      this.animate = this.animate.bind(this);
+      requestAnimationFrame(this.animate);
+
+      // if style not forced, cycle every n seconds
+      if(!style) this.cycleTimer = setInterval(()=>{ this.styleIndex = (this.styleIndex+1)%this.styles.length; this.rebuildModel(); }, 3200);
+      // click opens detail
+      this.container.addEventListener('click', ()=>openDetail(this.key));
+    }
+
+    rebuildModel(){
+      this.scene.remove(this.model);
+      this.style = this.styles[this.styleIndex];
+      this.model = createDroneModel(this.key, this.style, this.color);
+      this.scene.add(this.model);
+    }
+
+    setColor(hex){
+      this.color = parseInt(hex.replace('#','0x'));
+      // rebuild so shader materials pick new color
+      this.rebuildModel();
+    }
+
+    resize(){
+      const w = this.canvas.clientWidth || this.container.clientWidth;
+      const h = this.canvas.clientHeight || 120;
+      this.renderer.setSize(w,h,true);
+      this.camera.aspect = w/h; this.camera.updateProjectionMatrix();
+    }
+
+    animate(t){
+      if(!this.running) return;
+      const dt = (t - this.last)/1000; this.last = t;
+      this.model.rotation.y += dt * 0.7;
+      this.model.position.y = Math.sin(t*0.001 + this.key.length) * 0.02;
+      this.model.traverse(o=>{ if(o.material && o.material.uniforms && o.material.uniforms.uTime) o.material.uniforms.uTime.value = t*0.001; });
+      this.renderer.render(this.scene, this.camera);
+      requestAnimationFrame(this.animate);
+    }
+
+    destroy(){
+      this.running=false;
+      if(this.cycleTimer) clearInterval(this.cycleTimer);
+      if(this.renderer && this.renderer.domElement) this.renderer.domElement.remove();
+    }
+  }
+
+  /* --------------------------
+     Detail: main large scene for the right console
+     -------------------------- */
+  class Detail {
+    constructor(container){
+      this.container = container;
+      this.renderer = new THREE.WebGLRenderer({antialias:true,alpha:true});
+      container.innerHTML = ''; container.appendChild(this.renderer.domElement);
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.PerspectiveCamera(45,1,0.1,200); this.camera.position.set(1.6,0.8,2.2);
+      this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement); this.controls.enableDamping = true;
+      this.amb = new THREE.AmbientLight(0x9abfff,0.8); this.scene.add(this.amb);
+      this.dir = new THREE.DirectionalLight(0xffffff,0.6); this.dir.position.set(6,10,6); this.scene.add(this.dir);
+
+      const grid = new THREE.PlaneGeometry(6,6,60,60);
+      this.gridMat = new THREE.MeshBasicMaterial({color:0x06e0ff, transparent:true, opacity:0.03});
+      this.grid = new THREE.Mesh(grid, this.gridMat); this.grid.rotation.x = -Math.PI/2; this.grid.position.y = -0.72; this.scene.add(this.grid);
+
+      this.ring = new THREE.Mesh(new THREE.RingGeometry(0.4,0.76,64), new THREE.MeshBasicMaterial({color:0x06e0ff,transparent:true,opacity:0.06,side:THREE.DoubleSide}));
+      this.ring.rotation.x = -Math.PI/2; this.ring.position.y = -0.71; this.scene.add(this.ring);
+
+      this.modelGroup = new THREE.Group(); this.scene.add(this.modelGroup);
+      this.clock = new THREE.Clock(); this.simulator = false; this.animating = false; this.noise = new SimplexNoise();
+      window.addEventListener('resize', ()=>this.resize());
+      this.resize(); this.animate = this.animate.bind(this); this.running = true; requestAnimationFrame(this.animate);
+    }
+
+    resize(){
+      const w = this.container.clientWidth; const h = this.container.clientHeight;
+      this.renderer.setSize(w,h,true);
+      this.camera.aspect = w/h; this.camera.updateProjectionMatrix();
+    }
+
+    load(type, style='neon', color='#06e0ff'){
+      while(this.modelGroup.children.length) this.modelGroup.remove(this.modelGroup.children[0]);
+      const model = createDroneModel(type, style, parseInt(color.replace('#','0x')));
+      this.modelGroup.add(model);
+      this.model = model; this.type = type;
+      model.position.set(0,0,0); model.rotation.set(0,0,0); model.scale.set(1,1,1);
+      // camera framing
+      const bbox = new THREE.Box3().setFromObject(model); const size = new THREE.Vector3(); bbox.getSize(size);
+      const maxDim = Math.max(size.x,size.y,size.z); const fov = this.camera.fov * (Math.PI/180);
+      const camDist = Math.abs(maxDim / Math.tan(fov/2)) * 1.3;
+      gsap.to(this.camera.position, {x:0, y:Math.max(0.6, size.y*1.6), z:camDist, duration:0.9, ease:'expo.out'});
+      // create trail (for simulator)
+      this.createTrail();
+    }
+
+    createTrail(){
+      if(this.trail) { this.scene.remove(this.trail); this.trail = null; }
+      const N = 120; const pos = new Float32Array(N*3);
+      for(let i=0;i<N;i++){ pos[i*3]=0; pos[i*3+1]=0; pos[i*3+2]=0; }
+      const geom = new THREE.BufferGeometry(); geom.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      const mat = new THREE.PointsMaterial({size:0.012, color:0x06e0ff, transparent:true, opacity:0.55});
+      this.trail = new THREE.Points(geom, mat); this.scene.add(this.trail);
+    }
+
+    setStyle(style){
+      if(!this.model) return;
+      const pos = this.model.position.clone(), rot = this.model.rotation.clone(), sc = this.model.scale.clone(), type = this.type;
+      const colorHex = document.getElementById('colorPicker').value;
+      while(this.modelGroup.children.length) this.modelGroup.remove(this.modelGroup.children[0]);
+      const model = createDroneModel(type, style, parseInt(colorHex.replace('#','0x')));
+      model.position.copy(pos); model.rotation.copy(rot); model.scale.copy(sc); this.modelGroup.add(model); this.model = model;
+    }
+
+    setColor(hex){
+      const style = document.getElementById('holoStyle').value;
+      this.setStyle(style);
+    }
+
+    setScale(s){
+      if(this.model) gsap.to(this.model.scale, {x:s,y:s,z:s,duration:0.35,ease:'power2.out'});
+    }
+
+    toggleAnimate(){
+      this.animating = !this.animating;
+      if(this.animating){
+        gsap.to(this.model.rotation, {y:'+=' + (Math.PI*2), duration:6, repeat:-1, ease:'linear'});
+        gsap.to(this.model.position, {y:'+=0.05', duration:1.2, yoyo:true, repeat:-1, ease:'sine.inOut'});
+      } else {
+        gsap.killTweensOf(this.model.rotation); gsap.killTweensOf(this.model.position);
+        gsap.to(this.model.rotation, {y:0,duration:0.6,ease:'power2.out'});
+        gsap.to(this.model.position, {y:0,duration:0.6,ease:'power2.out'});
+      }
+    }
+
+    toggleSimulator(){
+      this.simulator = !this.simulator;
+      if(this.simulator){ gsap.to(this.gridMat, {opacity:0.12,duration:0.5}); gsap.to(this.ring.material, {opacity:0.18,duration:0.5}); }
+      else { gsap.to(this.gridMat, {opacity:0.03,duration:0.5}); gsap.to(this.ring.material, {opacity:0.06,duration:0.5}); }
+    }
+
+    animate(){
+      if(!this.running) return;
+      const t = performance.now() * 0.001;
+      this.controls.update();
+      if(this.model) this.model.traverse(o=>{ if(o.material && o.material.uniforms && o.material.uniforms.uTime) o.material.uniforms.uTime.value = t; });
+      if(this.simulator && this.model){
+        this.model.rotation.x = Math.sin(t*0.4)*0.06;
+        this.model.rotation.z = Math.cos(t*0.3)*0.04;
+        this.model.position.x = Math.sin(t*0.34)*0.06;
+        this.model.position.z = Math.cos(t*0.22)*0.06;
+        if(this.trail){
+          const positions = this.trail.geometry.attributes.position.array;
+          for(let i=positions.length-3;i>=3;i--){ positions[i]=positions[i-3]; positions[i+1]=positions[i-2]; positions[i+2]=positions[i-1]; }
+          const p = this.model.position; positions[0] = p.x + (Math.random()-0.5)*0.005; positions[1] = p.y + (Math.random()-0.5)*0.005; positions[2] = p.z + (Math.random()-0.5)*0.005;
+          this.trail.geometry.attributes.position.needsUpdate = true;
+        }
+      }
+      this.renderer.render(this.scene,this.camera);
+      requestAnimationFrame(this.animate);
+    }
+  }
+
+  /* --------------------------
+     Holographic background
+     -------------------------- */
+  class HoloBG {
+    constructor(canvas){
+      this.canvas = canvas;
+      this.renderer = new THREE.WebGLRenderer({canvas:canvas, alpha:true});
+      this.renderer.setPixelRatio(Math.min(2,window.devicePixelRatio));
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.PerspectiveCamera(50,1,0.1,200); this.camera.position.z = 5;
+      const pts = []; const cols = [];
+      for(let i=0;i<900;i++){ pts.push((Math.random()-0.5)*30,(Math.random()-0.5)*18,(Math.random()-0.5)*30); const c = new THREE.Color(0x06e0ff); c.offsetHSL(0,0,(Math.random()-0.5)*0.12); cols.push(c.r,c.g,c.b); }
+      const geom = new THREE.BufferGeometry(); geom.setAttribute('position', new THREE.Float32BufferAttribute(pts,3)); geom.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
+      const mat = new THREE.PointsMaterial({size:1.2, vertexColors:true, transparent:true, opacity:0.06});
+      this.points = new THREE.Points(geom, mat); this.scene.add(this.points);
+      window.addEventListener('resize', ()=>this.resize());
+      this.last = performance.now(); this.running = true; this.animate = this.animate.bind(this);
+      this.resize(); requestAnimationFrame(this.animate);
+    }
+    resize(){ const w=window.innerWidth, h=window.innerHeight; this.renderer.setSize(w,h,true); this.camera.aspect = w/h; this.camera.updateProjectionMatrix(); }
+    animate(t){ if(!this.running) return; const dt = (t - this.last)/1000; this.last = t; this.points.rotation.y += dt*0.02; this.renderer.render(this.scene,this.camera); requestAnimationFrame(this.animate); }
+  }
+
+  /* --------------------------
+     UI wiring
+     -------------------------- */
+  const thumbGrid = document.getElementById('thumbGrid');
+  const galleryGrid = document.getElementById('galleryGrid');
+  const detailSceneEl = document.getElementById('detail-scene');
+  const detailTitle = document.getElementById('detailTitle');
+  const detailSub = document.getElementById('detailSub');
+  const specsEl = document.getElementById('specs');
+
+  function buildUI(){
+    thumbGrid.innerHTML = ''; galleryGrid.innerHTML = '';
+    thumbInstances.forEach(t => t.destroy()); thumbInstances = [];
+
+    // For each drone, create one thumbnail per style (Level 2: show all styles)
+    KEYS.forEach(k=>{
+      // container for all styles of this drone
+      const container = document.createElement('div'); container.style.display = 'grid'; container.style.gridTemplateColumns = '1fr 1fr 1fr'; container.style.gap = '6px';
+      const wrapper = document.createElement('div'); wrapper.className='thumb-card';
+      const title = document.createElement('div'); title.className='thumb-title'; title.textContent = DRONES[k].title;
+      // append three mini canvases for neon/wire/crystal
+      const styles = ['neon','wire','crystal'];
+      styles.forEach(style=>{
+        const miniWrap = document.createElement('div'); miniWrap.style.width='100%'; miniWrap.style.height='100%';
+        container.appendChild(miniWrap);
+        const mini = new Thumbnail(miniWrap, k, style);
+        thumbInstances.push(mini);
+      });
+      wrapper.appendChild(container);
+      wrapper.appendChild(title);
+      thumbGrid.appendChild(wrapper);
+
+      // gallery: single card with default neon thumbnail
+      const gcard = document.createElement('div'); gcard.style.background='rgba(255,255,255,0.02)'; gcard.style.borderRadius='8px'; gcard.style.padding='8px';
+      gcard.style.display='flex'; gcard.style.flexDirection='column'; gcard.style.alignItems='center';
+      const gtitle = document.createElement('div'); gtitle.style.fontWeight='700'; gtitle.style.marginBottom='6px'; gtitle.textContent = DRONES[k].title;
+      const gwrap = document.createElement('div'); gwrap.style.width='100%'; gwrap.style.height='140px'; gwrap.style.borderRadius='6px'; gwrap.style.overflow='hidden';
+      gcard.appendChild(gwrap); gcard.appendChild(gtitle); galleryGrid.appendChild(gcard);
+      const gthumb = new Thumbnail(gwrap, k, 'neon'); thumbInstances.push(gthumb);
+    });
+  }
+
+  function showSection(s){
+    document.getElementById('hubSection').style.display = (s==='hub') ? '' : 'none';
+    document.getElementById('gallerySection').style.display = (s==='gallery') ? '' : 'none';
+    document.getElementById('aboutSection').style.display = (s==='about') ? '' : 'none';
+  }
+  showSection('hub');
+
+  function openDetail(key){
+    selected = key;
+    detailTitle.textContent = DRONES[key].title;
+    detailSub.textContent = DRONES[key].desc;
+    populateSpecs(key);
+    if(!detailScene) detailScene = new Detail(detailSceneEl);
+    const style = document.getElementById('holoStyle').value;
+    const color = document.getElementById('colorPicker').value;
+    detailScene.load(key, style, color);
+    // ensure hub visible
+    showSection('hub');
+    // scroll detail into view on small screens
+    if(window.innerWidth < 1100) detailSceneEl.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+
+  function populateSpecs(key){
+    specsEl.innerHTML = '';
+    const s = DRONES[key].specs;
+    for(const k in s){
+      const a = document.createElement('div'); a.textContent = k; a.style.opacity = 0.85;
+      const b = document.createElement('div'); b.textContent = s[k]; b.style.textAlign = 'right';
+      specsEl.appendChild(a); specsEl.appendChild(b);
+    }
+  }
+
+  // controls
+  function applyColor(){
+    const hex = document.getElementById('colorPicker').value;
+    thumbInstances.forEach(t=>{ if(t && t.setColor) t.setColor(hex); });
+    if(detailScene) detailScene.setColor(hex);
+  }
+  function toggleAnimate(){ if(detailScene) detailScene.toggleAnimate(); }
+  function toggleSimulator(){ if(detailScene) detailScene.toggleSimulator(); }
+  function cycleStyle(){
+    const sel = document.getElementById('holoStyle'); const opts = Array.from(sel.options).map(o=>o.value);
+    const idx = opts.indexOf(sel.value); sel.value = opts[(idx+1)%opts.length];
+    if(detailScene) detailScene.setStyle(sel.value);
+  }
+
+  document.getElementById('holoStyle').addEventListener('change', (e)=>{ if(detailScene) detailScene.setStyle(e.target.value); });
+  document.getElementById('sizeSlider').addEventListener('input',(e)=>{ if(detailScene) detailScene.setScale(parseFloat(e.target.value)); });
+
+  // init
+  buildUI();
+  openDetail('quadcopter');
+
+  // holographic background
+  holoBg = new HoloBG(document.getElementById('holo-bg'));
+
+  // responsiveness
+  window.addEventListener('resize', ()=>{ thumbInstances.forEach(t=>t.resize && t.resize()); if(detailScene) detailScene.resize(); if(holoBg) holoBg.resize(); });
+
+  // helpers
+  function jumpHome(){ showSection('hub'); window.scrollTo({top:0,behavior:'smooth'}); }
+  window.applyColor = applyColor; window.toggleAnimate = toggleAnimate; window.toggleSimulator = toggleSimulator; window.cycleStyle = cycleStyle; window.showSection = showSection; window.openDetail = openDetail; window.jumpHome = jumpHome;
+
+  // keyboard next/prev
+  window.addEventListener('keydown', (e)=>{ if(!selected) return; if(e.code==='KeyN'){ const i=KEYS.indexOf(selected); openDetail(KEYS[(i+1)%KEYS.length]); } if(e.code==='KeyP'){ const i=KEYS.indexOf(selected); openDetail(KEYS[(i-1+KEYS.length)%KEYS.length]); } });
+
+  console.log('Vyoma: working holograms loaded — thumbnails + detail scene active.');
+  </script>
+</body>
+</html>

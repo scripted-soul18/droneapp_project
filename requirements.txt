@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+databases
+aiofiles
+python-multipart
+typing_extensions
