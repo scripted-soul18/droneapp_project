@@ -4,9 +4,9 @@ from fastapi.staticfiles import StaticFiles
 from typing import List, Dict
 import json
 from sqlmodel import Session, select
-from .db import init_db, engine
-from .models import DroneConfig
-from .schemas import DroneConfigUpdate, DroneConfigOut
+from app.app.db import init_db, engine
+import models
+from app.schemas import DroneConfigUpdate, DroneConfigOut
 import asyncio
 
 app = FastAPI(title="Vyoma Hologram Backend")
@@ -46,13 +46,13 @@ manager = ConnectionManager()
 @app.get("/api/drones", response_model=List[DroneConfigOut])
 def list_drones():
     with Session(engine) as session:
-        drones = session.exec(select(DroneConfig)).all()
+        drones = session.exec(select(models.DroneConfig)).all()
         return drones
 
 @app.get("/api/drones/{key}", response_model=DroneConfigOut)
 def get_drone(key: str):
     with Session(engine) as session:
-        d = session.get(DroneConfig, key)
+        d = session.get(models.DroneConfig, key)
         if not d:
             raise HTTPException(status_code=404, detail="Drone not found")
         return d
@@ -60,7 +60,7 @@ def get_drone(key: str):
 @app.post("/api/drones/{key}/update", response_model=DroneConfigOut)
 async def update_drone(key: str, payload: DroneConfigUpdate):
     with Session(engine) as session:
-        d = session.get(DroneConfig, key)
+        d = session.get(models.DroneConfig, key)
         if not d:
             raise HTTPException(status_code=404, detail="Drone not found")
         updated = False
@@ -79,9 +79,11 @@ async def update_drone(key: str, payload: DroneConfigUpdate):
 # Simple route to serve index (if you place your HTML as app/static/index.html)
 @app.get("/", response_class=HTMLResponse)
 def root():
-    try:
-        return FileResponse("app/static/index.html")
-    except Exception:
+    import os
+    index_path = "app/static/index.html"
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    else:
         return HTMLResponse("<html><body><h3>Place your frontend in app/static/ and name it index.html</h3></body></html>")
 
 # WebSocket endpoint for live updates
@@ -107,7 +109,7 @@ async def websocket_endpoint(ws: WebSocket):
                 if persist:
                     # apply to DB (simple, no validation here)
                     with Session(engine) as session:
-                        d = session.get(DroneConfig, key)
+                        d = session.get(models.DroneConfig, key)
                         if d:
                             for k, v in payload.items():
                                 if hasattr(d, k):

@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, create_engine, Session, select
-from .models import DroneConfig
+import models
 import os
 
 DB_FILE = os.environ.get("DB_FILE", "data.db")
@@ -26,8 +26,8 @@ def init_db():
     }
     with Session(engine) as session:
         for k, (title, desc) in default.items():
-            ex = session.get(DroneConfig, k)
+            ex = session.get(models.DroneConfig, k)
             if not ex:
-                cfg = DroneConfig(key=k, title=title, desc=desc)
+                cfg = models.DroneConfig(key=k, title=title, desc=desc)
                 session.add(cfg)
         session.commit()
